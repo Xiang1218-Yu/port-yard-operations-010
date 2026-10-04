@@ -1,6 +1,7 @@
 import express from 'express';
-import { appointments, assignTask, blocks, containerDetail, containers, createContainer, createGateAppointment, createYardTask, dashboard, deleteContainer, deleteGateAppointment, deleteYardTask, editGateAppointment, equipment, gateConflicts, prioritizeTasks, tasks, updateContainer, updateYardTask, voyages, yardHeatmap } from './domain.js';
+import { addEvidence, appointments, assignTask, blocks, broadcastIncident, closeIncident, containerDetail, containers, createContainer, createGateAppointment, createIncident, createYardTask, dashboard, deleteContainer, deleteGateAppointment, deleteYardTask, editGateAppointment, equipment, gateConflicts, handoverIncident, incidentDetail, incidentSummaries, liftRule, prioritizeTasks, publishRule, registerPhase, retryRestore, tasks, updateContainer, updateEquipment, updateYardTask, voyages, yardHeatmap } from './domain.js';
 const app = express(); app.use(express.json());
+const conflict = (res: express.Response, error: unknown, fallback: string) => res.status(409).json({ message: error instanceof Error ? error.message : fallback });
 app.get('/api/dashboard', (_req, res) => res.json(dashboard()));
 app.get('/api/voyages', (_req, res) => res.json(voyages));
 app.get('/api/containers', (req, res) => res.json(req.query.status ? containers.filter(c => c.status === req.query.status) : containers));
@@ -16,6 +17,18 @@ app.post('/api/gate/appointments', (req, res) => { try { res.status(201).json(cr
 app.patch('/api/gate/appointments/:id', (req, res) => { try { const result = editGateAppointment(req.params.id, req.body); if (!result) return res.status(404).json({ message: '预约不存在' }); res.json(result); } catch (error) { res.status(409).json({ message: error instanceof Error ? error.message : '更新预约失败' }); } });
 app.delete('/api/gate/appointments/:id', (req, res) => { const result = deleteGateAppointment(req.params.id); if (!result) return res.status(404).json({ message: '预约不存在' }); res.json({ deleted: true, id: result.id }); });
 app.get('/api/equipment', (_req, res) => res.json(equipment));
+app.patch('/api/equipment/:id', (req, res) => { const result = updateEquipment(req.params.id, req.body); if (!result) return res.status(404).json({ message: '设备不存在' }); res.json(result); });
+app.get('/api/incidents', (_req, res) => res.json(incidentSummaries()));
+app.post('/api/incidents', (req, res) => { try { res.status(201).json(createIncident(req.body)); } catch (error) { conflict(res, error, '创建事件失败'); } });
+app.get('/api/incidents/:id', (req, res) => { const result = incidentDetail(req.params.id); if (!result) return res.status(404).json({ message: '事件不存在' }); res.json(result); });
+app.post('/api/incidents/:id/phases', (req, res) => { try { const result = registerPhase(req.params.id, req.body); if (!result) return res.status(404).json({ message: '事件不存在' }); res.status(201).json(result); } catch (error) { conflict(res, error, '登记处置阶段失败'); } });
+app.post('/api/incidents/:id/rules', (req, res) => { try { const result = publishRule(req.params.id, req.body); if (!result) return res.status(404).json({ message: '事件不存在' }); res.status(201).json(result); } catch (error) { conflict(res, error, '发布临时规则失败'); } });
+app.post('/api/incidents/:id/rules/:ruleId/lift', (req, res) => { try { const result = liftRule(req.params.id, req.params.ruleId, req.body); if (!result) return res.status(404).json({ message: '事件或规则不存在' }); res.json(result); } catch (error) { conflict(res, error, '解除规则失败'); } });
+app.post('/api/incidents/:id/rules/:ruleId/restore-retry', (req, res) => { try { const result = retryRestore(req.params.id, req.params.ruleId, req.body); if (!result) return res.status(404).json({ message: '事件或规则不存在' }); res.json(result); } catch (error) { conflict(res, error, '恢复重试失败'); } });
+app.post('/api/incidents/:id/handover', (req, res) => { try { const result = handoverIncident(req.params.id, req.body); if (!result) return res.status(404).json({ message: '事件不存在' }); res.json(result); } catch (error) { conflict(res, error, '处置人交接失败'); } });
+app.post('/api/incidents/:id/evidence', (req, res) => { try { const result = addEvidence(req.params.id, req.body); if (!result) return res.status(404).json({ message: '事件不存在' }); res.status(201).json(result); } catch (error) { conflict(res, error, '登记证据失败'); } });
+app.post('/api/incidents/:id/notify', (req, res) => { try { const result = broadcastIncident(req.params.id, req.body); if (!result) return res.status(404).json({ message: '事件不存在' }); res.json(result); } catch (error) { conflict(res, error, '发送通知失败'); } });
+app.post('/api/incidents/:id/close', (req, res) => { try { const result = closeIncident(req.params.id, req.body); if (!result) return res.status(404).json({ message: '事件不存在' }); res.json(result); } catch (error) { conflict(res, error, '关闭事件失败'); } });
 app.get('/api/tasks', (_req, res) => res.json(prioritizeTasks()));
 app.post('/api/tasks', (req, res) => { try { res.status(201).json(createYardTask(req.body)); } catch (error) { res.status(409).json({ message: error instanceof Error ? error.message : '创建作业任务失败' }); } });
 app.patch('/api/tasks/:id', (req, res) => { try { const result = updateYardTask(req.params.id, req.body); if (!result) return res.status(404).json({ message: '作业任务不存在' }); res.json(result); } catch (error) { res.status(409).json({ message: error instanceof Error ? error.message : '更新作业任务失败' }); } });
